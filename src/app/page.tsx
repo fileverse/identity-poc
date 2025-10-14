@@ -58,6 +58,7 @@ export default function Home() {
       let identityInstance: Identity;
 
       if (identityAddress === zeroAddress) {
+        // If the identity address is zero, then we need to create a new identity
         toast.info("Creating new identity", {
           autoClose: false,
         });
@@ -69,6 +70,7 @@ export default function Home() {
         toast.info("Setting up existing identity", {
           autoClose: false,
         });
+        // else setup the existing identity
         identityInstance = await Identity.setupExistingIdentity(
           user?.wallet?.address as Hex,
           identityAddress,
