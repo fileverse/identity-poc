@@ -11,13 +11,57 @@ import { toast } from "react-toastify";
 
 type AuthMode = "connect-wallet" | "sign-message";
 
+const PRIVY_MODAL_STYLE_ID = "headlessui-portal-root-style";
+
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<AuthMode>("connect-wallet");
 
   const { ready, authenticated, user, login } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets, ready: walletsReady } = useWallets();
+
+  const checkErc8019Support = async () => {
+    if (!wallets.length) return false;
+
+    try {
+      const wallet = wallets[0];
+
+      const walletClient = await privyWalletToClient(wallet);
+
+      const response:any = await walletClient.request({
+        // @ts-ignore
+        method: 'wallet_getCurrentAutoLoginPolicy',
+        params: [],
+      });
+
+      if (!response || !('willingToCreatePolicy' in response)) return false
+
+      return !!response?.willingToCreatePolicy;
+    } catch (err) {
+      console.error('Error during ERC-8019 support check', err);
+      return false;
+    }
+  }
+
+  // Check for ERC-8019 support and auto-login if supported.
+  useEffect(() => {
+    if (ready && walletsReady && wallets.length && !authenticated) {
+      checkErc8019Support().then((supported) => {
+        if (!supported) return 
+
+        // Hide Privy's modal for a seamless experience
+        const style = document.createElement('style');
+        style.id = PRIVY_MODAL_STYLE_ID;
+        style.textContent = '#headlessui-portal-root { display: none !important; }';
+        document.head.appendChild(style);
+        
+        wallets[0].loginOrLink()
+      }).catch((err) => {
+        console.error('Error checking ERC-8019 support', err);
+      });
+    }
+  }, [wallets.length, walletsReady, authenticated, ready])
 
   useEffect(() => {
     if (!ready) {
@@ -96,6 +140,19 @@ export default function Home() {
     }
   };
 
+  const onButtonClick = () => {
+    const styleElement = document.getElementById(PRIVY_MODAL_STYLE_ID);
+    if (styleElement) {
+      styleElement.remove();
+    }
+
+    if (mode === "connect-wallet") {
+      handleLogin();
+    } else {
+      handleSignMessage();
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <div className="w-full max-w-md">
@@ -110,9 +167,7 @@ export default function Home() {
           </div>
 
           <Button
-            onClick={
-              mode === "connect-wallet" ? handleLogin : handleSignMessage
-            }
+            onClick={onButtonClick}
             loading={loading}
           >
             {mode === "connect-wallet" ? "Connect Wallet" : "Sign Message"}
