@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { Identity } from "@/utils/identity";
 import { Hex } from "viem";
+import { iDb } from "@/utils/dixie";
 
 export default function Info() {
   const router = useRouter();
@@ -16,15 +17,16 @@ export default function Info() {
   useEffect(() => {
     const setupIdentity = async () => {
       if (!ready || !walletsReady) return;
-      const identityDetails = localStorage.getItem("identity-details");
+      const wallet = wallets.find((w) => w.address === user?.wallet?.address);
+
+      if (!wallet) router.push("/");
+      const identityDetails = await iDb.getIdentity(wallet?.address as Hex);
       if (!identityDetails) {
         router.push("/");
         return;
       }
 
-      const { identityAddress, password } = JSON.parse(identityDetails);
-      const wallet = wallets.find((w) => w.address === user?.wallet?.address);
-      if (!wallet) router.push("/");
+      const { identityAddress, password } = identityDetails;
 
       const identityInstance = await Identity.setupExistingIdentity(
         wallet?.address as Hex,
@@ -38,7 +40,6 @@ export default function Info() {
   }, [ready, walletsReady, user, wallets, router]);
 
   const handleDisconnect = async () => {
-    localStorage.removeItem("identity-details");
     await logout();
     router.push("/");
   };

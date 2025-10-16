@@ -8,6 +8,7 @@ import { privyWalletToClient } from "@/utils/common";
 import { Identity } from "@/utils/identity";
 import { Hex, zeroAddress } from "viem";
 import { toast } from "react-toastify";
+import { iDb } from "@/utils/dixie";
 
 type AuthMode = "connect-wallet" | "sign-message";
 
@@ -29,39 +30,42 @@ export default function Home() {
 
       const walletClient = await privyWalletToClient(wallet);
 
-      const response:any = await walletClient.request({
+      const response: any = await walletClient.request({
         // @ts-ignore
-        method: 'wallet_getCurrentAutoLoginPolicy',
+        method: "wallet_getCurrentAutoLoginPolicy",
         params: [],
       });
 
-      if (!response || !('willingToCreatePolicy' in response)) return false
+      if (!response || !("willingToCreatePolicy" in response)) return false;
 
       return !!response?.willingToCreatePolicy;
     } catch (err) {
-      console.error('Error during ERC-8019 support check', err);
+      console.error("Error during ERC-8019 support check", err);
       return false;
     }
-  }
+  };
 
   // Check for ERC-8019 support and auto-login if supported.
   useEffect(() => {
     if (ready && walletsReady && wallets.length && !authenticated) {
-      checkErc8019Support().then((supported) => {
-        if (!supported) return 
+      checkErc8019Support()
+        .then((supported) => {
+          if (!supported) return;
 
-        // Hide Privy's modal for a seamless experience
-        const style = document.createElement('style');
-        style.id = PRIVY_MODAL_STYLE_ID;
-        style.textContent = '#headlessui-portal-root { display: none !important; }';
-        document.head.appendChild(style);
-        
-        wallets[0].loginOrLink()
-      }).catch((err) => {
-        console.error('Error checking ERC-8019 support', err);
-      });
+          // Hide Privy's modal for a seamless experience
+          const style = document.createElement("style");
+          style.id = PRIVY_MODAL_STYLE_ID;
+          style.textContent =
+            "#headlessui-portal-root { display: none !important; }";
+          document.head.appendChild(style);
+
+          wallets[0].loginOrLink();
+        })
+        .catch((err) => {
+          console.error("Error checking ERC-8019 support", err);
+        });
     }
-  }, [wallets.length, walletsReady, authenticated, ready])
+  }, [wallets.length, walletsReady, authenticated, ready]);
 
   useEffect(() => {
     if (!ready) {
@@ -80,9 +84,28 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (authenticated && user) {
-      setMode("sign-message");
-    }
+    const checkAndSetupIdentity = async () => {
+      if (!authenticated || !user) return;
+      try {
+        setLoading(true);
+        const identity = await iDb.getIdentity(user?.wallet?.address as Hex);
+        if (identity) {
+          await Identity.setupExistingIdentity(
+            user?.wallet?.address as Hex,
+            identity?.identityAddress as Hex,
+            identity?.password as Hex
+          );
+          router.push("/info");
+        } else {
+          setMode("sign-message");
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAndSetupIdentity();
   }, [authenticated, user]);
 
   const handleSignMessage = async () => {
@@ -124,12 +147,10 @@ export default function Home() {
       toast.dismiss();
       if (!identityInstance) throw new Error("Failed to get identity");
 
-      localStorage.setItem(
-        "identity-details",
-        JSON.stringify({
-          identityAddress: identityInstance.identityAddress,
-          password: signature,
-        })
+      await iDb.saveIdentity(
+        user?.wallet?.address as Hex,
+        signature,
+        identityInstance.identityAddress
       );
 
       router.push("/info");
@@ -151,7 +172,7 @@ export default function Home() {
     } else {
       handleSignMessage();
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
@@ -166,10 +187,7 @@ export default function Home() {
             </p>
           </div>
 
-          <Button
-            onClick={onButtonClick}
-            loading={loading}
-          >
+          <Button onClick={onButtonClick} loading={loading}>
             {mode === "connect-wallet" ? "Connect Wallet" : "Sign Message"}
           </Button>
         </div>
