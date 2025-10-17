@@ -18,10 +18,22 @@ const usePrivyWrapped = (options?: {
   const { hideModalOnAutoLogin = true } = options || {};
   const previousUser = useRef<User | null>(null);
   const userResetTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [hasLoggedOutManually, setHasLoggedOutManually] = useState(() => {
+    if (typeof window === 'undefined') return false;
+
+    return localStorage.getItem('hasLoggedOutManually') === 'true';
+  })
   const [isErc8019Enabled, setIsErc8019Enabled] = useState(false);
   const privyResponse = usePrivy()
   const { wallets, ready: walletsReady } = useWallets();
   const { ready, authenticated, user } = privyResponse;
+
+  const updateHasLoggedOutManually = (value: boolean) => {
+    setHasLoggedOutManually(value);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hasLoggedOutManually', value ? 'true' : 'false');
+    }
+  }
 
   const checkIsErc8019Enabled = async () => {
     if (!wallets.length) return false;
@@ -46,9 +58,26 @@ const usePrivyWrapped = (options?: {
     }
   }
 
+  const logoutWrapped = async () => {
+    // Clean up any modal hiding styles
+    const existingStyle = document.getElementById(PRIVY_MODAL_STYLE_ID);
+    if (existingStyle) {
+      document.head.removeChild(existingStyle);
+    }
+
+    previousUser.current = null;
+    updateHasLoggedOutManually(true);
+    if (userResetTimeout.current) {
+      clearTimeout(userResetTimeout.current);
+      userResetTimeout.current = null;
+    }
+
+    return privyResponse.logout();
+  }
+
   // Check for ERC-8019 support and auto-login if enabled.
   useEffect(() => {
-    if (ready && walletsReady && wallets.length && !authenticated) {
+    if (ready && walletsReady && wallets.length && !authenticated && !hasLoggedOutManually) {
       checkIsErc8019Enabled().then(async (enabled) => {
         setIsErc8019Enabled(enabled);
         console.log('Debug: ERC-8019 support check result', { enabled, firstWallet: wallets[0] });
@@ -69,13 +98,14 @@ const usePrivyWrapped = (options?: {
         console.error('Error checking ERC-8019 support', err);
       })
     }
-  }, [wallets.length, walletsReady, authenticated, ready])
+  }, [wallets.length, walletsReady, authenticated, hasLoggedOutManually, ready])
 
   // Store the previous user to handle brief unauthenticated states during token refresh.
   useEffect(() => {
     if (user) {
       console.log('Debug: User authenticated');
       previousUser.current = user;
+      updateHasLoggedOutManually(false);
     }
   }, [user])
 
@@ -83,7 +113,10 @@ const usePrivyWrapped = (options?: {
   // Reset the previous user after the grace period if not reauthenticated
   useEffect(() => {
     if (user || !previousUser.current || userResetTimeout.current) {
-      if (userResetTimeout.current) clearTimeout(userResetTimeout.current);
+      if (userResetTimeout.current) {
+        clearTimeout(userResetTimeout.current);
+        userResetTimeout.current = null;
+      }
       return
     }
 
@@ -99,6 +132,7 @@ const usePrivyWrapped = (options?: {
   return {
     ...privyResponse,
     isErc8019Enabled,
+    logout: logoutWrapped,
     user: user || previousUser.current,
     authenticated: !!(authenticated || previousUser.current),
   };
