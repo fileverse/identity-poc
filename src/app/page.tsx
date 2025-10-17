@@ -9,6 +9,7 @@ import { Identity } from "@/utils/identity";
 import { Hex, zeroAddress } from "viem";
 import { toast } from "react-toastify";
 import { iDb } from "@/utils/dixie";
+import usePrivyWrapped from "@/hooks/usePrivyWrapped";
 
 type AuthMode = "connect-wallet" | "sign-message";
 
@@ -18,7 +19,7 @@ export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<AuthMode>("connect-wallet");
-  const { ready, authenticated, user, login } = usePrivy();
+  const { ready, authenticated, user, login } = usePrivyWrapped();
   const { wallets } = useWallets();
 
   useEffect(() => {

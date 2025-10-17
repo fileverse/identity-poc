@@ -2,69 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import {  useWallets } from "@privy-io/react-auth";
 import { Identity } from "@/utils/identity";
 import { Hex } from "viem";
-import { privyWalletToClient } from "@/utils/common";
 
-const PRIVY_MODAL_STYLE_ID = "headlessui-portal-root-style";
 import { iDb } from "@/utils/dixie";
+import usePrivyWrapped from "@/hooks/usePrivyWrapped";
 
 export default function Info() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
-  const { ready, authenticated, user, logout, getAccessToken } = usePrivy();
+  const { ready, authenticated, user, logout, getAccessToken } = usePrivyWrapped();
   const { wallets, ready: walletsReady } = useWallets();
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshingToken, setRefreshingToken] = useState(false);
-
-  const checkIsErc8019Enabled = async () => {
-    if (!wallets.length) return false;
-
-    try {
-      const wallet = wallets[0];
-
-      const walletClient = await privyWalletToClient(wallet);
-
-      const response: any = await walletClient.request({
-        // @ts-ignore
-        method: 'wallet_getCurrentAutoLoginPolicy',
-        params: [],
-      });
-
-      if (!response || !('willingToCreatePolicy' in response) || !('activePolicy' in response)) return false
-
-      return !!response?.willingToCreatePolicy && !!response.activePolicy;
-    } catch (err) {
-      console.error('Error during ERC-8019 support check', err);
-      return false;
-    }
-  }
-
-  // Check for ERC-8019 support and auto-login if enabled.
-  useEffect(() => {
-    if (ready && walletsReady && wallets.length && !authenticated) {
-      checkIsErc8019Enabled().then(async (enabled) => {
-        console.log('Debug: ERC-8019 support check result', { enabled, firstWallet: wallets[0] });
-        if (!enabled) {
-          setRefreshingToken(false);
-          return
-        }
-
-        // Hide Privy's modal for a seamless experience
-        const style = document.createElement('style');
-        style.id = PRIVY_MODAL_STYLE_ID;
-        style.textContent = '#headlessui-portal-root { display: none !important; }';
-        document.head.appendChild(style);
-
-        await wallets[0].loginOrLink()
-      }).catch((err) => {
-        console.error('Error checking ERC-8019 support', err);
-        setRefreshingToken(false);
-      })
-    }
-  }, [wallets.length, walletsReady, authenticated, ready])
 
   // Purposefully invalidate the JWT token in storage
   useEffect(() => {
@@ -80,14 +31,15 @@ export default function Info() {
         timeoutRef.current = null;
         return
       }
-
-      // setRefreshingToken(true);
       
       localStorage.setItem("privy:token", existingJwt.slice(-1) + 'X');
       // Let privy know we modified the token
-      await getAccessToken()
-      console.log('Debug: Token invalidated');
-      timeoutRef.current = null;
+      getAccessToken().catch(() => {
+        // expected error
+      }).finally(() => {
+        console.log('Debug: Token invalidated');
+        timeoutRef.current = null;
+      })
     }, 10 * 1000); // every 10sec
 
     return () => {
@@ -98,17 +50,10 @@ export default function Info() {
 
   }, [authenticated, user, loading, getAccessToken])
 
-  // Reset the state when the wallet reauthenticates itself
-  // with a SIWE message
-  useEffect(() => {
-    if (refreshingToken && authenticated) {
-      setRefreshingToken(false);
-    }
-  }, [refreshingToken, authenticated])
 
   useEffect(() => {
     const setupIdentity = async () => {
-      if (!ready || !walletsReady || refreshingToken) return;
+      if (!ready || !walletsReady) return;
       const wallet = wallets.find((w) => w.address === user?.wallet?.address);
 
       if (!wallet) router.push("/");
@@ -129,7 +74,7 @@ export default function Info() {
       setLoading(false);
     };
     setupIdentity();
-  }, [ready, walletsReady, refreshingToken, user, wallets, router]);
+  }, [ready, walletsReady, user, wallets, router]);
 
   const handleDisconnect = async () => {
     await logout();
@@ -143,10 +88,7 @@ export default function Info() {
     )}`;
   };
 
-  // Sadly authenticated becomes false while the token is being refreshed.
-  // For a real implementation the user will have to be stored somewhere
-  // while the user is being reauthenticated.
-  if ((!ready || !authenticated || loading) && !refreshingToken) {
+  if (!ready || !authenticated || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
         <div className="text-slate-600 dark:text-slate-400">Loading...</div>
