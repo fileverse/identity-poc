@@ -8,6 +8,7 @@ import { privyWalletToClient } from "@/utils/common";
 import { Identity } from "@/utils/identity";
 import { Hex, zeroAddress } from "viem";
 import { toast } from "react-toastify";
+import { iDb } from "@/utils/dixie";
 
 type AuthMode = "connect-wallet" | "sign-message";
 
@@ -17,8 +18,7 @@ export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<AuthMode>("connect-wallet");
-
-  const { ready, authenticated, user, login, getAccessToken } = usePrivy();
+  const { ready, authenticated, user, login } = usePrivy();
   const { wallets } = useWallets();
 
   useEffect(() => {
@@ -38,9 +38,28 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (authenticated && user) {
-      setMode("sign-message");
-    }
+    const checkAndSetupIdentity = async () => {
+      if (!authenticated || !user) return;
+      try {
+        setLoading(true);
+        const identity = await iDb.getIdentity(user?.wallet?.address as Hex);
+        if (identity) {
+          await Identity.setupExistingIdentity(
+            user?.wallet?.address as Hex,
+            identity?.identityAddress as Hex,
+            identity?.password as Hex
+          );
+          router.push("/info");
+        } else {
+          setMode("sign-message");
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAndSetupIdentity();
   }, [authenticated, user]);
 
   const handleSignMessage = async () => {
@@ -82,12 +101,10 @@ export default function Home() {
       toast.dismiss();
       if (!identityInstance) throw new Error("Failed to get identity");
 
-      localStorage.setItem(
-        "identity-details",
-        JSON.stringify({
-          identityAddress: identityInstance.identityAddress,
-          password: signature,
-        })
+      await iDb.saveIdentity(
+        user?.wallet?.address as Hex,
+        signature,
+        identityInstance.identityAddress
       );
 
       router.push("/info");
@@ -109,7 +126,7 @@ export default function Home() {
     } else {
       handleSignMessage();
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
@@ -124,10 +141,7 @@ export default function Home() {
             </p>
           </div>
 
-          <Button
-            onClick={onButtonClick}
-            loading={loading}
-          >
+          <Button onClick={onButtonClick} loading={loading}>
             {mode === "connect-wallet" ? "Connect Wallet" : "Sign Message"}
           </Button>
         </div>

@@ -8,6 +8,7 @@ import { Hex } from "viem";
 import { privyWalletToClient } from "@/utils/common";
 
 const PRIVY_MODAL_STYLE_ID = "headlessui-portal-root-style";
+import { iDb } from "@/utils/dixie";
 
 export default function Info() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -80,7 +81,7 @@ export default function Info() {
         return
       }
 
-      setRefreshingToken(true);
+      // setRefreshingToken(true);
       
       localStorage.setItem("privy:token", existingJwt.slice(-1) + 'X');
       // Let privy know we modified the token
@@ -108,15 +109,16 @@ export default function Info() {
   useEffect(() => {
     const setupIdentity = async () => {
       if (!ready || !walletsReady || refreshingToken) return;
-      const identityDetails = localStorage.getItem("identity-details");
+      const wallet = wallets.find((w) => w.address === user?.wallet?.address);
+
+      if (!wallet) router.push("/");
+      const identityDetails = await iDb.getIdentity(wallet?.address as Hex);
       if (!identityDetails) {
         router.push("/");
         return;
       }
 
-      const { identityAddress, password } = JSON.parse(identityDetails);
-      const wallet = wallets.find((w) => w.address === user?.wallet?.address);
-      if (!wallet) router.push("/");
+      const { identityAddress, password } = identityDetails;
 
       const identityInstance = await Identity.setupExistingIdentity(
         wallet?.address as Hex,
@@ -130,7 +132,6 @@ export default function Info() {
   }, [ready, walletsReady, refreshingToken, user, wallets, router]);
 
   const handleDisconnect = async () => {
-    localStorage.removeItem("identity-details");
     await logout();
     router.push("/");
   };
