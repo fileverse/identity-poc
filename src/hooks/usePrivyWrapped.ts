@@ -71,6 +71,7 @@ const usePrivyWrapped = (options?: {
     }
   }, [wallets.length, walletsReady, authenticated, ready])
 
+  // Store the previous user to handle brief unauthenticated states during token refresh.
   useEffect(() => {
     if (user) {
       console.log('Debug: User authenticated');
@@ -78,6 +79,8 @@ const usePrivyWrapped = (options?: {
     }
   }, [user])
 
+  // Handle grace period for reauthentication
+  // Reset the previous user after the grace period if not reauthenticated
   useEffect(() => {
     if (user || !previousUser.current || userResetTimeout.current) {
       if (userResetTimeout.current) clearTimeout(userResetTimeout.current);
