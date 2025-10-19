@@ -1,18 +1,55 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import {  useWallets } from "@privy-io/react-auth";
 import { Identity } from "@/utils/identity";
 import { Hex } from "viem";
+
 import { iDb } from "@/utils/dixie";
+import usePrivyWrapped from "@/hooks/usePrivyWrapped";
 
 export default function Info() {
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
-  const { ready, authenticated, user, logout } = usePrivy();
+  const { ready, authenticated, user, logout, getAccessToken } = usePrivyWrapped();
   const { wallets, ready: walletsReady } = useWallets();
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Purposefully invalidate the JWT token in storage
+  useEffect(() => {
+    if (!authenticated || !user || loading) return
+
+    if (timeoutRef.current) return
+
+    console.log('Debug: Setting up token invalidation interval')
+    timeoutRef.current = setTimeout(async () => {
+      const existingJwt = localStorage.getItem("privy:token");
+      
+      if (!existingJwt) {
+        timeoutRef.current = null;
+        return
+      }
+      
+      localStorage.setItem("privy:token", existingJwt.slice(-1) + 'X');
+      // Let privy know we modified the token
+      getAccessToken().catch(() => {
+        // expected error
+      }).finally(() => {
+        console.log('Debug: Token invalidated');
+        timeoutRef.current = null;
+      })
+    }, 10 * 1000); // every 10sec
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    }
+
+  }, [authenticated, user, loading, getAccessToken])
+
 
   useEffect(() => {
     const setupIdentity = async () => {

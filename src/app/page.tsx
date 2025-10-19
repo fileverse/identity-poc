@@ -9,6 +9,7 @@ import { Identity } from "@/utils/identity";
 import { Hex, zeroAddress } from "viem";
 import { toast } from "react-toastify";
 import { iDb } from "@/utils/dixie";
+import usePrivyWrapped from "@/hooks/usePrivyWrapped";
 
 type AuthMode = "connect-wallet" | "sign-message";
 
@@ -18,54 +19,8 @@ export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<AuthMode>("connect-wallet");
-
-  const { ready, authenticated, user, login } = usePrivy();
-  const { wallets, ready: walletsReady } = useWallets();
-
-  const checkErc8019Support = async () => {
-    if (!wallets.length) return false;
-
-    try {
-      const wallet = wallets[0];
-
-      const walletClient = await privyWalletToClient(wallet);
-
-      const response: any = await walletClient.request({
-        // @ts-ignore
-        method: "wallet_getCurrentAutoLoginPolicy",
-        params: [],
-      });
-
-      if (!response || !("willingToCreatePolicy" in response)) return false;
-
-      return !!response?.willingToCreatePolicy;
-    } catch (err) {
-      console.error("Error during ERC-8019 support check", err);
-      return false;
-    }
-  };
-
-  // Check for ERC-8019 support and auto-login if supported.
-  useEffect(() => {
-    if (ready && walletsReady && wallets.length && !authenticated) {
-      checkErc8019Support()
-        .then((supported) => {
-          if (!supported) return;
-
-          // Hide Privy's modal for a seamless experience
-          const style = document.createElement("style");
-          style.id = PRIVY_MODAL_STYLE_ID;
-          style.textContent =
-            "#headlessui-portal-root { display: none !important; }";
-          document.head.appendChild(style);
-
-          wallets[0].loginOrLink();
-        })
-        .catch((err) => {
-          console.error("Error checking ERC-8019 support", err);
-        });
-    }
-  }, [wallets.length, walletsReady, authenticated, ready]);
+  const { ready, authenticated, user, login } = usePrivyWrapped();
+  const { wallets } = useWallets();
 
   useEffect(() => {
     if (!ready) {
