@@ -49,9 +49,7 @@ const usePrivyWrapped = (options?: {
         params: [],
       });
 
-      if (!response || !('willingToCreatePolicy' in response) || !('activePolicy' in response)) return false
-
-      return !!response?.willingToCreatePolicy && !!response.activePolicy;
+      return !!response?.activePolicy;
     } catch (err) {
       console.error('Error during ERC-8019 support check', err);
       return false;
